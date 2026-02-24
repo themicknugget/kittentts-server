@@ -24,6 +24,7 @@ RUN git clone --depth 1 --branch ${ORT_REF} \
     https://github.com/microsoft/onnxruntime.git
 
 RUN cd onnxruntime && ./build.sh \
+        --allow_running_as_root \
         --config Release \
         --build_shared_lib \
         --parallel \
@@ -33,8 +34,7 @@ RUN cd onnxruntime && ./build.sh \
         --skip_submodule_sync \
         --cmake_extra_defines \
             onnxruntime_USE_VULKAN=ON \
-            onnxruntime_BUILD_UNIT_TESTS=OFF \
-    2>&1 | tee /build/ort-build.log
+            onnxruntime_BUILD_UNIT_TESTS=OFF
 
 # ── Stage 2: lean runtime image ──────────────────────────────────────────────
 FROM python:3.11-slim
