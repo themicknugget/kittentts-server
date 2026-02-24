@@ -1,0 +1,33 @@
+# ROCm execution provider — automatic GPU acceleration on AMD devices.
+# onnxruntime-rocm picks ROCMExecutionProvider when a supported GPU is present,
+# falling back to CPU otherwise.
+FROM rocm/dev-ubuntu-22.04:6.2.4
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 python3.11-dev python3-pip \
+        espeak-ng \
+    && rm -rf /var/lib/apt/lists/* \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+
+WORKDIR /app
+
+# onnxruntime-rocm bundles the ROCMExecutionProvider; same Python API as onnxruntime
+RUN pip install --no-cache-dir \
+    "kittentts @ https://github.com/KittenML/KittenTTS/releases/download/0.8/kittentts-0.8.0-py3-none-any.whl" \
+    onnxruntime-rocm \
+    fastapi \
+    "uvicorn[standard]" \
+    soundfile \
+    numpy
+
+COPY server.py .
+
+ENV KITTENTTS_MODEL=KittenML/kitten-tts-mini-0.8
+ENV KITTENTTS_PORT=8080
+
+EXPOSE 8080
+
+CMD ["python", "server.py"]

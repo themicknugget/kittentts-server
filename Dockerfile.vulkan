@@ -1,0 +1,70 @@
+# Builds ONNX Runtime from source with the experimental Vulkan execution provider.
+# The Vulkan EP was added in ONNX Runtime 1.21+ and is not included in PyPI packages.
+# First build will be slow (~30–60 min); subsequent builds are fast via Docker layer cache.
+
+# ── Stage 1: compile ONNX Runtime with Vulkan EP ─────────────────────────────
+FROM ubuntu:22.04 AS ort-builder
+
+ARG ORT_REF=v1.21.0
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential git wget \
+        cmake ninja-build \
+        python3.11 python3.11-dev python3-pip \
+        libvulkan-dev glslc \
+        libprotobuf-dev protobuf-compiler \
+        libpython3.11-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# pip cmake is newer than apt cmake on 22.04
+RUN pip3 install --no-cache-dir cmake ninja numpy
+
+WORKDIR /build
+
+RUN git clone --depth 1 --branch ${ORT_REF} \
+    https://github.com/microsoft/onnxruntime.git
+
+RUN cd onnxruntime && ./build.sh \
+        --config Release \
+        --build_shared_lib \
+        --parallel \
+        --enable_pybind \
+        --build_wheel \
+        --skip_tests \
+        --skip_submodule_sync \
+        --cmake_extra_defines \
+            onnxruntime_USE_VULKAN=ON \
+            onnxruntime_BUILD_UNIT_TESTS=OFF \
+    2>&1 | tee /build/ort-build.log
+
+# ── Stage 2: lean runtime image ──────────────────────────────────────────────
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        espeak-ng \
+        libvulkan1 \
+        mesa-vulkan-drivers \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install the Vulkan-enabled ORT wheel built in stage 1
+COPY --from=ort-builder /build/onnxruntime/build/Linux/Release/dist/*.whl /tmp/
+RUN pip install --no-cache-dir /tmp/onnxruntime*.whl && rm /tmp/onnxruntime*.whl
+
+RUN pip install --no-cache-dir \
+    "kittentts @ https://github.com/KittenML/KittenTTS/releases/download/0.8/kittentts-0.8.0-py3-none-any.whl" \
+    fastapi \
+    "uvicorn[standard]" \
+    soundfile \
+    numpy
+
+COPY server.py .
+
+ENV KITTENTTS_MODEL=KittenML/kitten-tts-mini-0.8
+ENV KITTENTTS_PORT=8080
+
+EXPOSE 8080
+
+CMD ["python", "server.py"]
