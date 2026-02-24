@@ -28,9 +28,6 @@ WORKDIR /build
 RUN git clone --depth 1 --branch ${ORT_REF} \
     https://github.com/microsoft/onnxruntime.git
 
-# -z noexecstack prevents the .so from requiring executable stack,
-# which newer kernels (6.18+) refuse with EINVAL
-ENV LDFLAGS="-Wl,-z,noexecstack"
 RUN cd onnxruntime && ./build.sh \
         --allow_running_as_root \
         --config Release \
@@ -43,9 +40,7 @@ RUN cd onnxruntime && ./build.sh \
         --cmake_extra_defines \
             onnxruntime_USE_VULKAN=ON \
             onnxruntime_BUILD_UNIT_TESTS=OFF \
-            FETCHCONTENT_SOURCE_DIR_EIGEN=/tmp/eigen-src \
-            "CMAKE_SHARED_LINKER_FLAGS=-Wl,-z,noexecstack" \
-            "CMAKE_EXE_LINKER_FLAGS=-Wl,-z,noexecstack"
+            FETCHCONTENT_SOURCE_DIR_EIGEN=/tmp/eigen-src
 
 # ── Stage 2: lean runtime image ──────────────────────────────────────────────
 # Must match the Python version used in stage 1 (Ubuntu 22.04 default = 3.10)
@@ -55,13 +50,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         espeak-ng \
         libvulkan1 \
         mesa-vulkan-drivers \
+        execstack \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install the Vulkan-enabled ORT wheel built in stage 1
+# Install the Vulkan-enabled ORT wheel built in stage 1, then clear
+# executable stack flag from .so files (ORT MLAS assembly marks stack
+# as executable; newer kernels 6.18+ block this with EINVAL)
 COPY --from=ort-builder /build/onnxruntime/build/Linux/Release/dist/*.whl /tmp/
-RUN pip install --no-cache-dir /tmp/onnxruntime*.whl && rm /tmp/onnxruntime*.whl
+RUN pip install --no-cache-dir /tmp/onnxruntime*.whl && rm /tmp/onnxruntime*.whl \
+    && find /usr/local/lib/python3.10 -name '*.so' -path '*/onnxruntime/*' \
+       -exec execstack -c {} \;
 
 # Install kittentts without deps to avoid pulling in plain onnxruntime over our Vulkan build
 RUN pip install --no-cache-dir --no-deps \
