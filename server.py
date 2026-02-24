@@ -1,6 +1,7 @@
 import io
 import os
 import logging
+import onnxruntime as ort
 import soundfile as sf
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
@@ -14,16 +15,37 @@ logger = logging.getLogger(__name__)
 MODEL_ID = os.environ.get("KITTENTTS_MODEL", "KittenML/kitten-tts-mini-0.8")
 SAMPLE_RATE = 24000
 
+# ORT_PROVIDERS: comma-separated list, e.g. "VulkanExecutionProvider,CPUExecutionProvider"
+# If unset, ORT picks from get_available_providers() automatically.
+_providers_env = os.environ.get("ORT_PROVIDERS", "").strip()
+REQUESTED_PROVIDERS = [p.strip() for p in _providers_env.split(",") if p.strip()] or None
+
+# Monkey-patch ort.InferenceSession so KittenTTS (which doesn't accept a providers arg)
+# uses our provider list when it constructs its session.
+_OrigInferenceSession = ort.InferenceSession
+
+class _PatchedSession(_OrigInferenceSession):
+    def __init__(self, path_or_bytes, sess_options=None, providers=None, **kwargs):
+        effective = providers if providers is not None else REQUESTED_PROVIDERS
+        super().__init__(path_or_bytes, sess_options=sess_options, providers=effective, **kwargs)
+
+ort.InferenceSession = _PatchedSession
+
 tts = None
+active_providers: list[str] = []
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global tts
+    global tts, active_providers
+    available = ort.get_available_providers()
+    logger.info(f"ORT available providers: {available}")
+    logger.info(f"ORT requested providers: {REQUESTED_PROVIDERS or '(auto)'}")
     logger.info(f"Loading KittenTTS model: {MODEL_ID}")
     from kittentts import KittenTTS
-    tts = KittenTTS(model=MODEL_ID)
-    logger.info("Model ready")
+    tts = KittenTTS(MODEL_ID)
+    active_providers = tts.model.session.get_providers()
+    logger.info(f"ORT active providers: {active_providers}")
     yield
 
 
@@ -61,7 +83,12 @@ class SpeechRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model": MODEL_ID, "ready": tts is not None}
+    return {
+        "status": "ok",
+        "model": MODEL_ID,
+        "ready": tts is not None,
+        "ort_providers": active_providers,
+    }
 
 
 @app.get("/v1/models")
