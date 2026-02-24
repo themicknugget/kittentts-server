@@ -28,6 +28,9 @@ WORKDIR /build
 RUN git clone --depth 1 --branch ${ORT_REF} \
     https://github.com/microsoft/onnxruntime.git
 
+# -z noexecstack prevents the .so from requiring executable stack,
+# which newer kernels (6.18+) refuse with EINVAL
+ENV LDFLAGS="-Wl,-z,noexecstack"
 RUN cd onnxruntime && ./build.sh \
         --allow_running_as_root \
         --config Release \
@@ -40,7 +43,9 @@ RUN cd onnxruntime && ./build.sh \
         --cmake_extra_defines \
             onnxruntime_USE_VULKAN=ON \
             onnxruntime_BUILD_UNIT_TESTS=OFF \
-            FETCHCONTENT_SOURCE_DIR_EIGEN=/tmp/eigen-src
+            FETCHCONTENT_SOURCE_DIR_EIGEN=/tmp/eigen-src \
+            "CMAKE_SHARED_LINKER_FLAGS=-Wl,-z,noexecstack" \
+            "CMAKE_EXE_LINKER_FLAGS=-Wl,-z,noexecstack"
 
 # ── Stage 2: lean runtime image ──────────────────────────────────────────────
 # Must match the Python version used in stage 1 (Ubuntu 22.04 default = 3.10)
@@ -58,12 +63,13 @@ WORKDIR /app
 COPY --from=ort-builder /build/onnxruntime/build/Linux/Release/dist/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/onnxruntime*.whl && rm /tmp/onnxruntime*.whl
 
-RUN pip install --no-cache-dir \
+# Install kittentts without deps to avoid pulling in plain onnxruntime over our Vulkan build
+RUN pip install --no-cache-dir --no-deps \
     "kittentts @ https://github.com/KittenML/KittenTTS/releases/download/0.8/kittentts-0.8.0-py3-none-any.whl" \
+    && pip install --no-cache-dir \
+    espeakng_loader huggingface_hub misaki num2words numpy soundfile spacy \
     fastapi \
-    "uvicorn[standard]" \
-    soundfile \
-    numpy
+    "uvicorn[standard]"
 
 COPY server.py .
 
