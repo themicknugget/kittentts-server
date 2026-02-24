@@ -15,7 +15,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # kittentts depends on onnxruntime (CPU-only) which conflicts with onnxruntime-rocm.
-# Install kittentts first, then remove plain onnxruntime and install onnxruntime-rocm.
+# The two packages install .so files into the same directory and stale files from
+# plain onnxruntime prevent the ROCm provider from loading. Nuke the entire
+# onnxruntime directory before installing onnxruntime-rocm.
 RUN pip install --no-cache-dir \
     "kittentts @ https://github.com/KittenML/KittenTTS/releases/download/0.8/kittentts-0.8.0-py3-none-any.whl" \
     fastapi \
@@ -23,6 +25,7 @@ RUN pip install --no-cache-dir \
     soundfile \
     numpy \
     && pip uninstall -y onnxruntime \
+    && rm -rf /usr/local/lib/python3.11/dist-packages/onnxruntime* \
     && pip install --no-cache-dir onnxruntime-rocm
 
 COPY server.py .
