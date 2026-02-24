@@ -18,12 +18,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Use pip cmake/ninja — apt cmake on 22.04 is 3.22, ORT needs 3.26+
 RUN pip3 install --no-cache-dir "cmake<4" ninja numpy
 
-# Clone Eigen 3.4.0 to avoid ORT's FetchContent hitting GitLab (blocked on GHA runners).
-# ORT's eigen.cmake unconditionally calls FetchContent_MakeAvailable which tries GitLab;
-# FETCHCONTENT_SOURCE_DIR_EIGEN points cmake to this clone instead (skips download + hash).
-# git clone works where wget/curl to github.com/archive/* fails (codeload.github.com blocked).
-RUN git clone --depth 1 --branch 3.4.0 \
-    https://github.com/libeigen/eigen.git /tmp/eigen-src
+# Eigen is pre-cloned by the workflow on the GHA runner (which has full network access)
+# and passed in via build context as eigen-src/. BuildKit containers can't reach GitLab
+# or github.com/archive (codeload.github.com) where ORT's FetchContent would go.
+COPY eigen-src /tmp/eigen-src
 
 WORKDIR /build
 
