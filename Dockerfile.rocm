@@ -14,15 +14,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install kittentts and deps first, then force-reinstall onnxruntime-rocm
-# to overwrite the plain onnxruntime that kittentts pulls in as a dependency
+# kittentts depends on onnxruntime (CPU-only) which conflicts with onnxruntime-rocm.
+# Install kittentts first, then remove plain onnxruntime and install onnxruntime-rocm.
 RUN pip install --no-cache-dir \
     "kittentts @ https://github.com/KittenML/KittenTTS/releases/download/0.8/kittentts-0.8.0-py3-none-any.whl" \
     fastapi \
     "uvicorn[standard]" \
     soundfile \
     numpy \
-    && pip install --no-cache-dir --force-reinstall onnxruntime-rocm
+    && pip uninstall -y onnxruntime \
+    && pip install --no-cache-dir onnxruntime-rocm
 
 COPY server.py .
 
