@@ -10,14 +10,12 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential git wget \
-        cmake ninja-build \
         python3.11 python3.11-dev python3-pip \
-        libvulkan-dev glslc \
+        libvulkan-dev glslang-tools \
         libprotobuf-dev protobuf-compiler \
-        libpython3.11-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# pip cmake is newer than apt cmake on 22.04
+# Use pip cmake/ninja — apt cmake on 22.04 is 3.22, ORT needs 3.26+
 RUN pip3 install --no-cache-dir cmake ninja numpy
 
 WORKDIR /build
