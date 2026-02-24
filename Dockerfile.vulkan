@@ -9,15 +9,25 @@ ARG ORT_REF=v1.21.0
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential git wget \
+        build-essential git wget unzip \
         python3 python3.10-dev python3-pip \
         libvulkan-dev glslang-tools \
         libprotobuf-dev protobuf-compiler \
-        libeigen3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Use pip cmake/ninja — apt cmake on 22.04 is 3.22, ORT needs 3.26+
-RUN pip3 install --no-cache-dir cmake ninja numpy
+RUN pip3 install --no-cache-dir "cmake<4" ninja numpy
+
+# Pre-download the exact Eigen commit ORT v1.21.0 expects from GitHub mirror.
+# ORT's eigen.cmake unconditionally calls FetchContent_MakeAvailable which tries
+# GitLab (gitlab.com/libeigen/eigen) — blocked on GitHub Actions runners.
+# Setting FETCHCONTENT_SOURCE_DIR_EIGEN makes cmake use the local source instead.
+RUN wget -qO /tmp/eigen.zip \
+      "https://github.com/libeigen/eigen/archive/1d8b82b0740839c0de7f1242a3585e3390ff5f33.zip" \
+    && mkdir -p /tmp/eigen-tmp \
+    && unzip -q /tmp/eigen.zip -d /tmp/eigen-tmp \
+    && mv /tmp/eigen-tmp/eigen-* /tmp/eigen-src \
+    && rm -rf /tmp/eigen-tmp /tmp/eigen.zip
 
 WORKDIR /build
 
@@ -36,8 +46,7 @@ RUN cd onnxruntime && ./build.sh \
         --cmake_extra_defines \
             onnxruntime_USE_VULKAN=ON \
             onnxruntime_BUILD_UNIT_TESTS=OFF \
-            onnxruntime_USE_PREINSTALLED_EIGEN=ON \
-            eigen_path=/usr/include/eigen3
+            FETCHCONTENT_SOURCE_DIR_EIGEN=/tmp/eigen-src
 
 # ── Stage 2: lean runtime image ──────────────────────────────────────────────
 # Must match the Python version used in stage 1 (Ubuntu 22.04 default = 3.10)
