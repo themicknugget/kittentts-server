@@ -50,18 +50,39 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         espeak-ng \
         libvulkan1 \
         mesa-vulkan-drivers \
-        execstack \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install the Vulkan-enabled ORT wheel built in stage 1, then clear
-# executable stack flag from .so files (ORT MLAS assembly marks stack
-# as executable; newer kernels 6.18+ block this with EINVAL)
+# Install the Vulkan-enabled ORT wheel, then clear executable stack flag
+# from .so files. ORT MLAS assembly marks PT_GNU_STACK as RWE (executable);
+# newer kernels (6.18+) refuse dlopen with EINVAL when this is set.
+# Patch the ELF program header to change RWE→RW (flags 0x7→0x6).
 COPY --from=ort-builder /build/onnxruntime/build/Linux/Release/dist/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/onnxruntime*.whl && rm /tmp/onnxruntime*.whl \
-    && find /usr/local/lib/python3.10 -name '*.so' -path '*/onnxruntime/*' \
-       -exec execstack -c {} \;
+    && python3 -c " \
+import glob, struct, os; \
+PT_GNU_STACK = 0x6474e551; \
+PF_X = 0x1; \
+for so in glob.glob('/usr/local/lib/python3.10/**/onnxruntime/**/*.so', recursive=True): \
+    with open(so, 'r+b') as f: \
+        magic = f.read(4); \
+        if magic != b'\x7fELF': continue; \
+        ei_class = f.read(1)[0]; \
+        if ei_class != 2: continue; \
+        f.seek(32); e_phoff = struct.unpack('<Q', f.read(8))[0]; \
+        f.seek(54); e_phentsize = struct.unpack('<H', f.read(2))[0]; \
+        e_phnum = struct.unpack('<H', f.read(2))[0]; \
+        for i in range(e_phnum): \
+            off = e_phoff + i * e_phentsize; \
+            f.seek(off); p_type = struct.unpack('<I', f.read(4))[0]; \
+            if p_type != PT_GNU_STACK: continue; \
+            p_flags = struct.unpack('<I', f.read(4))[0]; \
+            if p_flags & PF_X: \
+                f.seek(off + 4); f.write(struct.pack('<I', p_flags & ~PF_X)); \
+                print(f'Cleared execstack: {so}'); \
+            break \
+"
 
 # Install kittentts without deps to avoid pulling in plain onnxruntime over our Vulkan build
 RUN pip install --no-cache-dir --no-deps \
