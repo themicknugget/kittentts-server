@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Use pip cmake/ninja — apt cmake on 22.04 is 3.22, ORT needs 3.26+
-RUN pip3 install --no-cache-dir "cmake<4" ninja numpy
+RUN pip3 install --no-cache-dir "cmake<4" ninja numpy packaging
 
 # Eigen is pre-cloned by the workflow on the GHA runner (which has full network access)
 # and passed in via build context as eigen-src/. BuildKit containers can't reach GitLab
