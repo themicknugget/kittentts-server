@@ -10,9 +10,10 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential git wget \
-        python3.11 python3.11-dev python3-pip \
+        python3 python3.10-dev python3-pip \
         libvulkan-dev glslang-tools \
         libprotobuf-dev protobuf-compiler \
+        libeigen3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Use pip cmake/ninja — apt cmake on 22.04 is 3.22, ORT needs 3.26+
@@ -34,10 +35,13 @@ RUN cd onnxruntime && ./build.sh \
         --skip_submodule_sync \
         --cmake_extra_defines \
             onnxruntime_USE_VULKAN=ON \
-            onnxruntime_BUILD_UNIT_TESTS=OFF
+            onnxruntime_BUILD_UNIT_TESTS=OFF \
+            onnxruntime_USE_PREINSTALLED_EIGEN=ON \
+            eigen_path=/usr/include/eigen3
 
 # ── Stage 2: lean runtime image ──────────────────────────────────────────────
-FROM python:3.11-slim
+# Must match the Python version used in stage 1 (Ubuntu 22.04 default = 3.10)
+FROM python:3.10-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         espeak-ng \
