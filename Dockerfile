@@ -61,7 +61,7 @@ RUN pip install --no-cache-dir --no-deps \
 COPY server.py .
 
 ENV KITTENTTS_MODEL=KittenML/kitten-tts-mini-0.8
-ENV KITTENTTS_PORT=8080
+ENV PORT=8080
 
 EXPOSE 8080
 
