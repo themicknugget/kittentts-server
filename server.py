@@ -51,26 +51,22 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="KittenTTS OpenAI-compatible server", lifespan=lifespan)
 
-# Map OpenAI voice aliases to KittenTTS voices
+# Map OpenAI voice aliases to KittenTTS mini-0.8 voices (expr-voice-{2-5}-{m,f})
 VOICE_MAP = {
-    "alloy":   "Jasper",
-    "echo":    "Bruno",
-    "fable":   "Bella",
-    "onyx":    "Hugo",
-    "nova":    "Luna",
-    "shimmer": "Rosie",
-    # Native KittenTTS voices pass through
-    "bella":  "Bella",
-    "jasper": "Jasper",
-    "luna":   "Luna",
-    "bruno":  "Bruno",
-    "rosie":  "Rosie",
-    "hugo":   "Hugo",
-    "kiki":   "Kiki",
-    "leo":    "Leo",
+    "alloy":   "expr-voice-2-m",
+    "echo":    "expr-voice-3-m",
+    "fable":   "expr-voice-2-f",
+    "onyx":    "expr-voice-4-m",
+    "nova":    "expr-voice-3-f",
+    "shimmer": "expr-voice-4-f",
 }
 
-NATIVE_VOICES = ["Bella", "Jasper", "Luna", "Bruno", "Rosie", "Hugo", "Kiki", "Leo"]
+NATIVE_VOICES = [
+    "expr-voice-2-m", "expr-voice-2-f",
+    "expr-voice-3-m", "expr-voice-3-f",
+    "expr-voice-4-m", "expr-voice-4-f",
+    "expr-voice-5-m", "expr-voice-5-f",
+]
 
 
 class SpeechRequest(BaseModel):
