@@ -1,8 +1,8 @@
 # Builds ONNX Runtime from source for optimized CPU inference.
-# Source builds produce faster code than generic PyPI wheels (~1.7x on Strix Halo).
-# First build will be slow (~30–60 min); subsequent builds are fast via Docker layer cache.
+# Source builds produce faster code than generic PyPI wheels (~1.7x).
+# First build ~30–60 min; subsequent builds fast via Docker layer cache.
 
-# ── Stage 1: compile ONNX Runtime ────────────────────────────────────────────
+# Stage 1: compile ONNX Runtime
 FROM ubuntu:22.04 AS ort-builder
 
 ARG ORT_REF=v1.24.2
@@ -14,12 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libprotobuf-dev protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 
-# Use pip cmake/ninja — apt cmake on 22.04 is 3.22, ORT needs 3.26+
 RUN pip3 install --no-cache-dir "cmake<4" ninja numpy packaging
 
-# Eigen is pre-cloned by the workflow on the GHA runner (which has full network access)
-# and passed in via build context as eigen-src/. BuildKit containers can't reach GitLab
-# or github.com/archive (codeload.github.com) where ORT's FetchContent would go.
 COPY eigen-src /tmp/eigen-src
 
 WORKDIR /build
@@ -40,8 +36,7 @@ RUN cd onnxruntime && ./build.sh \
             onnxruntime_BUILD_UNIT_TESTS=OFF \
             FETCHCONTENT_SOURCE_DIR_EIGEN=/tmp/eigen-src
 
-# ── Stage 2: lean runtime image ──────────────────────────────────────────────
-# Must match the Python version used in stage 1 (Ubuntu 22.04 default = 3.10)
+# Stage 2: lean runtime image
 FROM python:3.10-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -50,15 +45,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install source-built ORT wheel, then clear executable stack flag.
-# ORT MLAS assembly marks PT_GNU_STACK as RWE; kernels 6.18+ refuse dlopen.
 COPY --from=ort-builder /build/onnxruntime/build/Linux/Release/dist/*.whl /tmp/
 COPY fix_execstack.py /tmp/fix_execstack.py
 RUN pip install --no-cache-dir /tmp/onnxruntime*.whl && rm /tmp/onnxruntime*.whl \
     && python3 /tmp/fix_execstack.py '/usr/local/lib/python3.10/**/onnxruntime/**/*.so' \
     && rm /tmp/fix_execstack.py
 
-# Install kittentts without deps to avoid pulling in plain onnxruntime over our source build
 RUN pip install --no-cache-dir --no-deps \
     "kittentts @ https://github.com/KittenML/KittenTTS/releases/download/0.8/kittentts-0.8.0-py3-none-any.whl" \
     && pip install --no-cache-dir \
