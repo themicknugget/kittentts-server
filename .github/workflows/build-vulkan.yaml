@@ -13,8 +13,7 @@ on:
 
 env:
   IMAGE: ghcr.io/themicknugget/kittentts-server
-  # Exact Eigen commit ORT v1.21.0 pins in cmake/deps.txt — has PropagateNaN API
-  # that was added after the 3.4.0 tag.
+  # Exact Eigen commit ORT v1.24.2 pins in cmake/deps.txt
   EIGEN_COMMIT: "1d8b82b0740839c0de7f1242a3585e3390ff5f33"
 
 jobs:
@@ -31,7 +30,7 @@ jobs:
       # Clone Eigen on the runner (has full network access) and include it in
       # the Docker build context. BuildKit containers can't reach gitlab.com or
       # github.com/archive/* (codeload), so we pre-fetch outside Docker.
-      - name: Clone Eigen (ORT v1.21.0 pinned commit)
+      - name: Clone Eigen (ORT v1.24.2 pinned commit)
         run: |
           git clone https://gitlab.com/libeigen/eigen.git eigen-src
           git -C eigen-src checkout ${{ env.EIGEN_COMMIT }}

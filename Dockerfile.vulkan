@@ -1,17 +1,16 @@
-# Builds ONNX Runtime from source with the experimental Vulkan execution provider.
-# The Vulkan EP was added in ONNX Runtime 1.21+ and is not included in PyPI packages.
+# Builds ONNX Runtime from source for optimized CPU inference.
+# Source builds produce faster code than generic PyPI wheels (~1.7x on Strix Halo).
 # First build will be slow (~30–60 min); subsequent builds are fast via Docker layer cache.
 
-# ── Stage 1: compile ONNX Runtime with Vulkan EP ─────────────────────────────
+# ── Stage 1: compile ONNX Runtime ────────────────────────────────────────────
 FROM ubuntu:22.04 AS ort-builder
 
-ARG ORT_REF=v1.21.0
+ARG ORT_REF=v1.24.2
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential git wget \
         python3 python3.10-dev python3-pip \
-        libvulkan-dev glslang-tools \
         libprotobuf-dev protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 
@@ -38,7 +37,6 @@ RUN cd onnxruntime && ./build.sh \
         --skip_tests \
         --skip_submodule_sync \
         --cmake_extra_defines \
-            onnxruntime_USE_VULKAN=ON \
             onnxruntime_BUILD_UNIT_TESTS=OFF \
             FETCHCONTENT_SOURCE_DIR_EIGEN=/tmp/eigen-src
 
@@ -48,13 +46,11 @@ FROM python:3.10-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         espeak-ng \
-        libvulkan1 \
-        mesa-vulkan-drivers \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install the Vulkan-enabled ORT wheel, then clear executable stack flag.
+# Install source-built ORT wheel, then clear executable stack flag.
 # ORT MLAS assembly marks PT_GNU_STACK as RWE; kernels 6.18+ refuse dlopen.
 COPY --from=ort-builder /build/onnxruntime/build/Linux/Release/dist/*.whl /tmp/
 COPY fix_execstack.py /tmp/fix_execstack.py
@@ -62,7 +58,7 @@ RUN pip install --no-cache-dir /tmp/onnxruntime*.whl && rm /tmp/onnxruntime*.whl
     && python3 /tmp/fix_execstack.py '/usr/local/lib/python3.10/**/onnxruntime/**/*.so' \
     && rm /tmp/fix_execstack.py
 
-# Install kittentts without deps to avoid pulling in plain onnxruntime over our Vulkan build
+# Install kittentts without deps to avoid pulling in plain onnxruntime over our source build
 RUN pip install --no-cache-dir --no-deps \
     "kittentts @ https://github.com/KittenML/KittenTTS/releases/download/0.8/kittentts-0.8.0-py3-none-any.whl" \
     && pip install --no-cache-dir \

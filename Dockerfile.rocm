@@ -1,6 +1,50 @@
-# ROCm execution provider — automatic GPU acceleration on AMD devices.
-# onnxruntime-rocm picks ROCMExecutionProvider when a supported GPU is present,
-# falling back to CPU otherwise.
+# Builds ONNX Runtime from source with ROCm execution provider.
+# ROCm EP was removed in ORT 1.23, so we use 1.22.2 (last version with ROCm EP).
+# Targets gfx1100 — use HSA_OVERRIDE_GFX_VERSION=11.0.0 at runtime for gfx1151.
+# First build will be slow (~60–90 min); subsequent builds are fast via Docker layer cache.
+
+# ── Stage 1: compile ONNX Runtime with ROCm EP ──────────────────────────────
+FROM rocm/dev-ubuntu-22.04:6.2.4 AS ort-builder
+
+ARG ORT_REF=v1.22.2
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential git wget \
+        python3.11 python3.11-dev python3-pip \
+        libprotobuf-dev protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/* \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+
+# Use pip cmake/ninja — apt cmake on 22.04 is 3.22, ORT needs 3.26+
+RUN pip3 install --no-cache-dir "cmake<4" ninja numpy packaging
+
+# Eigen pre-cloned by the GHA workflow (BuildKit can't reach all FetchContent URLs)
+COPY eigen-src /tmp/eigen-src
+
+WORKDIR /build
+
+RUN git clone --depth 1 --branch ${ORT_REF} \
+    https://github.com/microsoft/onnxruntime.git
+
+# Build only for gfx1100 (closest to gfx1151) to keep compile time reasonable
+RUN cd onnxruntime && ./build.sh \
+        --allow_running_as_root \
+        --config Release \
+        --build_shared_lib \
+        --parallel \
+        --enable_pybind \
+        --build_wheel \
+        --skip_tests \
+        --skip_submodule_sync \
+        --use_rocm \
+        --rocm_home /opt/rocm \
+        --cmake_extra_defines \
+            onnxruntime_BUILD_UNIT_TESTS=OFF \
+            CMAKE_HIP_ARCHITECTURES=gfx1100 \
+            FETCHCONTENT_SOURCE_DIR_EIGEN=/tmp/eigen-src
+
+# ── Stage 2: runtime image with ROCm libraries ──────────────────────────────
 FROM rocm/dev-ubuntu-22.04:6.2.4
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -14,19 +58,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# kittentts depends on onnxruntime (CPU-only) which conflicts with onnxruntime-rocm.
-# The two packages install .so files into the same directory and stale files from
-# plain onnxruntime prevent the ROCm provider from loading. Nuke the entire
-# onnxruntime directory before installing onnxruntime-rocm.
-RUN pip install --no-cache-dir \
+# Install source-built ORT wheel with ROCm EP, then clear executable stack flag.
+# ORT MLAS assembly marks PT_GNU_STACK as RWE; kernels 6.18+ refuse dlopen.
+COPY --from=ort-builder /build/onnxruntime/build/Linux/Release/dist/*.whl /tmp/
+COPY fix_execstack.py /tmp/fix_execstack.py
+RUN pip install --no-cache-dir /tmp/onnxruntime*.whl && rm /tmp/onnxruntime*.whl \
+    && python3 /tmp/fix_execstack.py '/usr/local/lib/python3.11/**/onnxruntime/**/*.so' \
+    && rm /tmp/fix_execstack.py
+
+# Install kittentts without deps to avoid pulling in plain onnxruntime over our ROCm build
+RUN pip install --no-cache-dir --no-deps \
     "kittentts @ https://github.com/KittenML/KittenTTS/releases/download/0.8/kittentts-0.8.0-py3-none-any.whl" \
+    && pip install --no-cache-dir \
+    espeakng_loader huggingface_hub misaki phonemizer-fork num2words numpy soundfile spacy \
     fastapi \
-    "uvicorn[standard]" \
-    soundfile \
-    numpy \
-    && pip uninstall -y onnxruntime \
-    && rm -rf /usr/local/lib/python3.11/dist-packages/onnxruntime* \
-    && pip install --no-cache-dir onnxruntime-rocm
+    "uvicorn[standard]"
 
 COPY server.py .
 
