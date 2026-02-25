@@ -66,7 +66,7 @@ RUN pip install --no-cache-dir /tmp/onnxruntime*.whl && rm /tmp/onnxruntime*.whl
 RUN pip install --no-cache-dir --no-deps \
     "kittentts @ https://github.com/KittenML/KittenTTS/releases/download/0.8/kittentts-0.8.0-py3-none-any.whl" \
     && pip install --no-cache-dir \
-    espeakng_loader huggingface_hub misaki num2words numpy soundfile spacy \
+    espeakng_loader huggingface_hub misaki phonemizer-fork num2words numpy soundfile spacy \
     fastapi \
     "uvicorn[standard]"
 
