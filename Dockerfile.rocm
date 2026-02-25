@@ -9,11 +9,13 @@ FROM rocm/dev-ubuntu-22.04:6.2.4 AS ort-builder
 ARG ORT_REF=v1.22.2
 ARG DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
         build-essential git wget \
         python3.11 python3.11-dev python3-pip \
         libprotobuf-dev protobuf-compiler \
-        hiprand rocrand rocblas hipblas miopen-hip hipfft rocfft half \
+    && apt-get install -y \
+        hiprand-dev rocrand-dev rocblas-dev hipblas-dev miopen-hip-dev hipfft-dev rocfft-dev half \
     && rm -rf /var/lib/apt/lists/* \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
 
@@ -29,7 +31,7 @@ RUN git clone --depth 1 --branch ${ORT_REF} \
     https://github.com/microsoft/onnxruntime.git
 
 # Build only for gfx1100 (closest to gfx1151) to keep compile time reasonable
-ENV CMAKE_PREFIX_PATH=/opt/rocm
+ENV CMAKE_PREFIX_PATH="/opt/rocm;/opt/rocm-6.2.4"
 RUN cd onnxruntime && ./build.sh \
         --allow_running_as_root \
         --config Release \
