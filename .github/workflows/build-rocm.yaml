@@ -54,5 +54,5 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:rocm
             ${{ env.IMAGE }}:rocm-${{ github.sha }}
-          cache-from: type=gha,scope=rocm
-          cache-to: type=gha,mode=max,scope=rocm
+          cache-from: type=gha,scope=rocm-v2
+          cache-to: type=gha,mode=max,scope=rocm-v2
