@@ -45,6 +45,7 @@ RUN cd onnxruntime && ./build.sh \
         --rocm_home /opt/rocm \
         --cmake_extra_defines \
             onnxruntime_BUILD_UNIT_TESTS=OFF \
+            onnxruntime_USE_COMPOSABLE_KERNEL=OFF \
             CMAKE_HIP_ARCHITECTURES=gfx1100 \
             FETCHCONTENT_SOURCE_DIR_EIGEN=/tmp/eigen-src
 
