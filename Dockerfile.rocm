@@ -43,6 +43,7 @@ RUN cd onnxruntime && ./build.sh \
         --cmake_extra_defines \
             onnxruntime_BUILD_UNIT_TESTS=OFF \
             CMAKE_HIP_ARCHITECTURES=gfx1100 \
+            CMAKE_PREFIX_PATH=/opt/rocm \
             FETCHCONTENT_SOURCE_DIR_EIGEN=/tmp/eigen-src
 
 # ── Stage 2: runtime image with ROCm libraries ──────────────────────────────
